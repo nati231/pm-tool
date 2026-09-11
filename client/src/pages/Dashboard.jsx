@@ -1,14 +1,82 @@
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../api/axios';
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
+  const [projects, setProjects] = useState([]);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [error, setError] = useState('');
+
+  const fetchProjects = async () => {
+    try {
+      const res = await api.get('/projects');
+      setProjects(res.data);
+    } catch (err) {
+      setError('Failed to load projects');
+    }
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    try {
+      await api.post('/projects', { name, description });
+      setName('');
+      setDescription('');
+      fetchProjects();
+    } catch (err) {
+      setError('Failed to create project');
+    }
+  };
 
   return (
-    <div style={{ maxWidth: 600, margin: '80px auto' }}>
-      <h2>Welcome, {user?.name}</h2>
-      <p>{user?.email}</p>
+    <div style={{ maxWidth: 700, margin: '60px auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <h2>Welcome, {user?.name}</h2>
+        <button onClick={logout}>Logout</button>
+      </div>
 
-      <button onClick={logout}>Logout</button>
+      <h3>New Project</h3>
+
+      <form onSubmit={handleCreate} style={{ marginBottom: 30 }}>
+        <input
+          placeholder="Project name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+
+        <input
+          placeholder="Description (optional)"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+
+        <button type="submit">Create</button>
+      </form>
+
+      {error && <p style={{ color: 'red' }}>{error}</p>}
+
+      <h3>Your Projects</h3>
+
+      {projects.length === 0 && <p>No projects yet.</p>}
+
+      <ul>
+        {projects.map((p) => (
+          <li key={p.id}>
+            <Link to={`/project/${p.id}`}>{p.name}</Link>
+            {p.description && <span> — {p.description}</span>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
