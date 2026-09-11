@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const createDb = require('./prisma/db');
 const authRoutes = require('./routes/auth');
+const projectRoutes = require('./routes/projects');
 
 const app = express();
 
@@ -27,6 +28,7 @@ async function startServer() {
 
     // Mount authentication routes after the database is ready.
     app.use('/api/auth', authRoutes(db));
+    app.use('/api/projects', projectRoutes(db));
 
     app.get('/test-db', async (req, res) => {
       try {
