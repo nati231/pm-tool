@@ -7,6 +7,7 @@ model User {
 
   ownedProjects Project[]      @relation("ProjectOwner")
   memberships   ProjectMember[]
+  assignedTasks Task[]
 }
 
 model Project {
@@ -17,7 +18,8 @@ model Project {
   owner       User     @relation("ProjectOwner", fields: [ownerId], references: [id])
   createdAt   DateTime @default(now())
 
-  members     ProjectMember[]
+  members ProjectMember[]
+  tasks   Task[]
 }
 
 model ProjectMember {
@@ -26,8 +28,20 @@ model ProjectMember {
   userId    String
   project   Project  @relation(fields: [projectId], references: [id])
   user      User     @relation(fields: [userId], references: [id])
-  role      String   @default("member") // "owner" or "member"
+  role      String   @default("member")
   joinedAt  DateTime @default(now())
 
-  @@unique([projectId, userId]) // prevents adding the same user to a project twice
+  @@unique([projectId, userId])
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  status      String   @default("todo")
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  assigneeId  String?
+  assignee    User?    @relation(fields: [assigneeId], references: [id])
+  createdAt   DateTime @default(now())
 }
