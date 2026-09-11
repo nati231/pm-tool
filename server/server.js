@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const createDb = require('./prisma/db');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
@@ -24,12 +25,21 @@ async function startServer() {
 
     app.locals.db = db;
 
+    // Mount authentication routes after the database is ready.
+    app.use('/api/auth', authRoutes(db));
+
     app.get('/test-db', async (req, res) => {
       try {
         const users = await db.orm.public.User.all();
-        res.json({ message: 'DB connected', userCount: users.length });
+
+        res.json({
+          message: 'DB connected',
+          userCount: users.length
+        });
       } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({
+          error: err.message
+        });
       }
     });
 
