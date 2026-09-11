@@ -6,6 +6,7 @@ const createDb = require('./prisma/db');
 const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
+const commentRoutes = require('./routes/comments');
 
 const app = express();
 
@@ -31,6 +32,7 @@ async function startServer() {
     app.use('/api/auth', authRoutes(db));
     app.use('/api/projects', projectRoutes(db));
     app.use('/api/tasks', taskRoutes(db));
+    app.use('/api/comments', commentRoutes(db));
 
     app.get('/test-db', async (req, res) => {
       try {
