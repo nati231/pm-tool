@@ -76,6 +76,38 @@ module.exports = function taskRoutes(db) {
     }
   });
 
+  // GET a single task
+  router.get('/:id', async (req, res) => {
+    try {
+      const task = await db.orm.public.Task
+        .where({ id: req.params.id })
+        .first();
+
+      if (!task) {
+        return res.status(404).json({
+          error: 'Task not found'
+        });
+      }
+
+      const isMember = await assertMember(
+        task.projectId,
+        req.userId
+      );
+
+      if (!isMember) {
+        return res.status(403).json({
+          error: 'Not a member of this project'
+        });
+      }
+
+      res.json(task);
+    } catch (err) {
+      res.status(500).json({
+        error: err.message
+      });
+    }
+  });
+
   router.patch('/:id', async (req, res) => {
     try {
       const task = await db.orm.public.Task
