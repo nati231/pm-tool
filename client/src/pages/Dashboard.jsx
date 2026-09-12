@@ -73,7 +73,7 @@ export default function Dashboard() {
         {projects.map((p) => (
           <li key={p.id}>
             <Link to={`/project/${p.id}`}>{p.name}</Link>
-            {p.description && <span> — {p.description}</span>}
+            {p.description && <span> â€” {p.description}</span>}
           </li>
         ))}
       </ul>

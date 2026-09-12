@@ -39,6 +39,8 @@ module.exports = function taskRoutes(db) {
         status: status || 'todo'
       });
 
+      req.app.locals.io.to(projectId).emit('task:created', task);
+
       res.status(201).json(task);
     } catch (err) {
       console.error('Create task error:', err);
@@ -141,6 +143,10 @@ module.exports = function taskRoutes(db) {
           ...(status !== undefined && { status }),
           ...(assigneeId !== undefined && { assigneeId })
         });
+
+      req.app.locals.io
+        .to(task.projectId)
+        .emit('task:updated', updated);
 
       res.json(updated);
     } catch (err) {

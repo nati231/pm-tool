@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/axios';
+import socket from '../socket';
 
 export default function TaskDetail() {
   const { id } = useParams();
-
   const [task, setTask] = useState(null);
   const [comments, setComments] = useState([]);
   const [content, setContent] = useState('');
@@ -27,6 +27,18 @@ export default function TaskDetail() {
 
   useEffect(() => {
     fetchData();
+
+    const handleCommentCreated = (newComment) => {
+      if (newComment.taskId === id) {
+        setComments((prev) => [...prev, newComment]);
+      }
+    };
+
+    socket.on('comment:created', handleCommentCreated);
+
+    return () => {
+      socket.off('comment:created', handleCommentCreated);
+    };
   }, [id]);
 
   const handleAddComment = async (e) => {
@@ -40,7 +52,6 @@ export default function TaskDetail() {
       });
 
       setContent('');
-      fetchData();
     } catch (err) {
       console.error('Failed to post comment:', err);
       setError('Failed to post comment');
@@ -69,8 +80,8 @@ export default function TaskDetail() {
 
       {task.description && <p>{task.description}</p>}
 
-      <p>
-        <strong>Status:</strong> {task.status}
+      <p style={{ fontSize: 12, color: '#888' }}>
+        Status: {task.status}
       </p>
 
       {error && <p style={{ color: 'red' }}>{error}</p>}

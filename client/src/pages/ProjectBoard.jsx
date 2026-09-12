@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../api/axios';
+import socket from '../socket';
 
 const STATUSES = [
   { key: 'todo', label: 'To Do' },
@@ -31,10 +32,36 @@ export default function ProjectBoard() {
 
   useEffect(() => {
     fetchData();
+
+    socket.emit('joinProject', id);
+
+    const handleTaskCreated = (newTask) => {
+      if (newTask.projectId === id) {
+        setTasks((prev) => [...prev, newTask]);
+      }
+    };
+
+    const handleTaskUpdated = (updatedTask) => {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === updatedTask.id ? updatedTask : t
+        )
+      );
+    };
+
+    socket.on('task:created', handleTaskCreated);
+    socket.on('task:updated', handleTaskUpdated);
+
+    return () => {
+      socket.emit('leaveProject', id);
+      socket.off('task:created', handleTaskCreated);
+      socket.off('task:updated', handleTaskUpdated);
+    };
   }, [id]);
 
   const handleCreateTask = async (e) => {
     e.preventDefault();
+    setError('');
 
     try {
       await api.post('/tasks', {
@@ -44,7 +71,6 @@ export default function ProjectBoard() {
       });
 
       setTitle('');
-      fetchData();
     } catch (err) {
       setError('Failed to create task');
     }
@@ -55,8 +81,6 @@ export default function ProjectBoard() {
       await api.patch(`/tasks/${taskId}`, {
         status: newStatus
       });
-
-      fetchData();
     } catch (err) {
       setError('Failed to update task');
     }
@@ -66,7 +90,7 @@ export default function ProjectBoard() {
 
   return (
     <div style={{ maxWidth: 1000, margin: '40px auto' }}>
-      <Link to="/dashboard">? Back to Dashboard</Link>
+      <Link to="/dashboard">← Back to Dashboard</Link>
 
       <h2>{project.name}</h2>
       <p>{project.description}</p>
@@ -126,7 +150,7 @@ export default function ProjectBoard() {
                             marginRight: 4
                           }}
                         >
-                          ? {st.label}
+                          → {st.label}
                         </button>
                       ))}
                   </div>
