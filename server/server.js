@@ -10,6 +10,7 @@ const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
 const taskRoutes = require('./routes/tasks');
 const commentRoutes = require('./routes/comments');
+const memberRoutes = require('./routes/members');
 
 const app = express();
 
@@ -68,6 +69,7 @@ async function startServer() {
     app.use('/api/projects', projectRoutes(db));
     app.use('/api/tasks', taskRoutes(db));
     app.use('/api/comments', commentRoutes(db));
+    app.use('/api/members', memberRoutes(db));
 
     server.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

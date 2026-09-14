@@ -142,5 +142,40 @@ module.exports = function authRoutes(db) {
     }
   });
 
+  // SEARCH USERS
+  router.get('/users/search', requireAuth, async (req, res) => {
+    try {
+      const q = String(req.query.q || '').trim().toLowerCase();
+
+      if (!q) {
+        return res.json([]);
+      }
+
+      const users = await db.orm.public.User.all();
+
+      const results = users
+        .filter((user) => {
+          return (
+            user.name.toLowerCase().includes(q) ||
+            user.email.toLowerCase().includes(q)
+          );
+        })
+        .slice(0, 10)
+        .map((user) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email
+        }));
+
+      res.json(results);
+    } catch (err) {
+      console.error('Search users error:', err);
+
+      res.status(500).json({
+        error: err.message
+      });
+    }
+  });
+
   return router;
 };
