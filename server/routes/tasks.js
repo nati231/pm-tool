@@ -15,7 +15,14 @@ module.exports = function taskRoutes(db) {
 
   router.post('/', async (req, res) => {
     try {
-      const { title, description, projectId, assigneeId, status } = req.body;
+      const {
+        title,
+        description,
+        projectId,
+        assigneeId,
+        status,
+        priority
+      } = req.body;
 
       if (!title || !projectId) {
         return res.status(400).json({
@@ -36,7 +43,8 @@ module.exports = function taskRoutes(db) {
         description: description || null,
         projectId,
         assigneeId: assigneeId || null,
-        status: status || 'todo'
+        status: status || 'todo',
+        priority: priority || 'medium'
       });
 
       req.app.locals.io.to(projectId).emit('task:created', task);
@@ -133,7 +141,13 @@ module.exports = function taskRoutes(db) {
         });
       }
 
-      const { title, description, status, assigneeId } = req.body;
+      const {
+        title,
+        description,
+        status,
+        assigneeId,
+        priority
+      } = req.body;
 
       const updated = await db.orm.public.Task
         .where({ id: req.params.id })
@@ -141,7 +155,8 @@ module.exports = function taskRoutes(db) {
           ...(title !== undefined && { title }),
           ...(description !== undefined && { description }),
           ...(status !== undefined && { status }),
-          ...(assigneeId !== undefined && { assigneeId })
+          ...(assigneeId !== undefined && { assigneeId }),
+          ...(priority !== undefined && { priority })
         });
 
       req.app.locals.io
@@ -180,6 +195,10 @@ module.exports = function taskRoutes(db) {
           error: 'Not a member of this project'
         });
       }
+
+      await db.orm.public.Comment
+        .where({ taskId: req.params.id })
+        .delete();
 
       await db.orm.public.Task
         .where({ id: req.params.id })

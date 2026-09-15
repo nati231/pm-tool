@@ -17,6 +17,7 @@ export default function ProjectBoard() {
   const [members, setMembers] = useState([]);
 
   const [title, setTitle] = useState('');
+  const [priority, setPriority] = useState('medium');
   const [error, setError] = useState('');
 
   const [search, setSearch] = useState('');
@@ -103,10 +104,12 @@ export default function ProjectBoard() {
       await api.post('/tasks', {
         title,
         projectId: id,
-        status: 'todo'
+        status: 'todo',
+        priority
       });
 
       setTitle('');
+      setPriority('medium');
     } catch (err) {
       setError('Failed to create task');
     }
@@ -318,7 +321,22 @@ export default function ProjectBoard() {
           required
         />
 
-        <button type="submit">Add Task</button>
+        <select
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          style={{
+            marginLeft: 8,
+            padding: 5
+          }}
+        >
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+
+        <button type="submit" style={{ marginLeft: 8 }}>
+          Add Task
+        </button>
       </form>
 
       <div style={{ display: 'flex', gap: 20 }}>
@@ -348,6 +366,28 @@ export default function ProjectBoard() {
                   }}
                 >
                   <Link to={`/task/${t.id}`}>{t.title}</Link>
+
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 13,
+                      color: '#666'
+                    }}
+                  >
+                    👤{' '}
+                    {members.find(
+                      (member) => member.userId === t.assigneeId
+                    )?.user?.name || 'Unassigned'}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 13
+                    }}
+                  >
+                    Priority: <strong>{t.priority || 'medium'}</strong>
+                  </div>
 
                   <div style={{ marginTop: 6 }}>
                     {STATUSES
