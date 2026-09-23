@@ -1,6 +1,8 @@
 const express = require('express');
 const requireAuth = require('../middleware/auth');
 
+require('temporal-polyfill/global');
+
 module.exports = function taskRoutes(db) {
   const router = express.Router();
   router.use(requireAuth);
@@ -21,7 +23,8 @@ module.exports = function taskRoutes(db) {
         projectId,
         assigneeId,
         status,
-        priority
+        priority,
+        dueDate
       } = req.body;
 
       if (!title || !projectId) {
@@ -44,7 +47,10 @@ module.exports = function taskRoutes(db) {
         projectId,
         assigneeId: assigneeId || null,
         status: status || 'todo',
-        priority: priority || 'medium'
+        priority: priority || 'medium',
+        dueDate: dueDate
+          ? Temporal.Instant.from(dueDate)
+          : null
       });
 
       req.app.locals.io.to(projectId).emit('task:created', task);
@@ -146,7 +152,8 @@ module.exports = function taskRoutes(db) {
         description,
         status,
         assigneeId,
-        priority
+        priority,
+        dueDate
       } = req.body;
 
       const updated = await db.orm.public.Task
@@ -156,7 +163,12 @@ module.exports = function taskRoutes(db) {
           ...(description !== undefined && { description }),
           ...(status !== undefined && { status }),
           ...(assigneeId !== undefined && { assigneeId }),
-          ...(priority !== undefined && { priority })
+          ...(priority !== undefined && { priority }),
+          ...(dueDate !== undefined && {
+            dueDate: dueDate
+              ? Temporal.Instant.from(dueDate)
+              : null
+          })
         });
 
       req.app.locals.io

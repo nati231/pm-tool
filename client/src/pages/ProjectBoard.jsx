@@ -18,8 +18,20 @@ export default function ProjectBoard() {
 
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
+  const [dueDate, setDueDate] = useState('');
   const [error, setError] = useState('');
 
+  // Project editing
+  const [editingProject, setEditingProject] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const [projectError, setProjectError] = useState('');
+  const [savingProject, setSavingProject] = useState(false);
+
+  // Project deletion
+  const [deletingProject, setDeletingProject] = useState(false);
+
+  // Member search
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -37,9 +49,15 @@ export default function ProjectBoard() {
       setProject(projRes.data);
       setTasks(tasksRes.data);
       setMembers(membersRes.data);
+
+      // Populate project edit fields
+      setProjectName(projRes.data.name || '');
+      setProjectDescription(projRes.data.description || '');
     } catch (err) {
       console.error('Failed to load project:', err);
-      setError('Failed to load project');
+      setError(
+        err.response?.data?.error || 'Failed to load project'
+      );
     }
   };
 
@@ -105,23 +123,33 @@ export default function ProjectBoard() {
         title,
         projectId: id,
         status: 'todo',
-        priority
+        priority,
+        dueDate: dueDate || null
       });
 
       setTitle('');
       setPriority('medium');
+      setDueDate('');
     } catch (err) {
-      setError('Failed to create task');
+      console.error('Failed to create task:', err);
+      setError(
+        err.response?.data?.error || 'Failed to create task'
+      );
     }
   };
 
   const handleStatusChange = async (taskId, newStatus) => {
+    setError('');
+
     try {
       await api.patch(`/tasks/${taskId}`, {
         status: newStatus
       });
     } catch (err) {
-      setError('Failed to update task');
+      console.error('Failed to update task:', err);
+      setError(
+        err.response?.data?.error || 'Failed to update task'
+      );
     }
   };
 
@@ -165,19 +193,266 @@ export default function ProjectBoard() {
     }
   };
 
+  // Save project name and description
+  const handleSaveProject = async (e) => {
+    e.preventDefault();
+
+    if (!projectName.trim()) {
+      setProjectError('Project name cannot be empty');
+      return;
+    }
+
+    setProjectError('');
+    setSavingProject(true);
+
+    try {
+      const res = await api.patch(`/projects/${id}`, {
+        name: projectName.trim(),
+        description: projectDescription.trim() || null
+      });
+
+      setProject(res.data);
+      setProjectName(res.data.name || '');
+      setProjectDescription(res.data.description || '');
+      setEditingProject(false);
+    } catch (err) {
+      console.error('Failed to update project:', err);
+
+      setProjectError(
+        err.response?.data?.error || 'Failed to update project'
+      );
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleCancelProjectEdit = () => {
+    setProjectName(project?.name || '');
+    setProjectDescription(project?.description || '');
+    setProjectError('');
+    setEditingProject(false);
+  };
+
+  // Delete project
+  const handleDeleteProject = async () => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${project.name}"?\n\nThis will permanently delete the project, its tasks, comments, and members.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError('');
+    setDeletingProject(true);
+
+    try {
+      await api.delete(`/projects/${id}`);
+
+      // Return to dashboard after successful deletion
+      window.location.href = '/dashboard';
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+
+      setError(
+        err.response?.data?.error || 'Failed to delete project'
+      );
+
+      setDeletingProject(false);
+    }
+  };
+
+  const formatDueDate = (date) => {
+    if (!date) {
+      return null;
+    }
+
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   if (!project) {
-    return <p>Loading...</p>;
+    return (
+      <div style={{ maxWidth: 1000, margin: '40px auto' }}>
+        {error ? (
+          <p style={{ color: 'red' }}>{error}</p>
+        ) : (
+          <p>Loading...</p>
+        )}
+      </div>
+    );
   }
 
   return (
     <div style={{ maxWidth: 1000, margin: '40px auto' }}>
-      <Link to="/dashboard">← Back to Dashboard</Link>
+      <Link to="/dashboard">
+        ← Back to Dashboard
+      </Link>
 
-      <h2>{project.name}</h2>
-      <p>{project.description}</p>
+      {/* Project Header */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 20,
+          marginTop: 20,
+          marginBottom: 20
+        }}
+      >
+        <div>
+          <h2 style={{ marginBottom: 5 }}>
+            {project.name}
+          </h2>
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+          {project.description && (
+            <p style={{ marginTop: 0, color: '#666' }}>
+              {project.description}
+            </p>
+          )}
+        </div>
 
+        {!editingProject && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setProjectName(project.name || '');
+                setProjectDescription(project.description || '');
+                setProjectError('');
+                setEditingProject(true);
+              }}
+              disabled={deletingProject}
+            >
+              Edit Project
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDeleteProject}
+              disabled={deletingProject}
+            >
+              {deletingProject
+                ? 'Deleting...'
+                : 'Delete Project'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Edit Project Form */}
+      {editingProject && (
+        <form
+          onSubmit={handleSaveProject}
+          style={{
+            border: '1px solid #ddd',
+            padding: 20,
+            borderRadius: 8,
+            marginBottom: 30,
+            background: '#fafafa'
+          }}
+        >
+          <h3 style={{ marginTop: 0 }}>
+            Edit Project
+          </h3>
+
+          <div style={{ marginBottom: 15 }}>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: 5,
+                fontWeight: 'bold'
+              }}
+            >
+              Project Name
+            </label>
+
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: 10,
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 15 }}>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: 5,
+                fontWeight: 'bold'
+              }}
+            >
+              Description
+            </label>
+
+            <textarea
+              value={projectDescription}
+              onChange={(e) =>
+                setProjectDescription(e.target.value)
+              }
+              rows={4}
+              placeholder="Project description (optional)"
+              style={{
+                width: '100%',
+                padding: 10,
+                boxSizing: 'border-box',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+
+          {projectError && (
+            <p style={{ color: 'red' }}>
+              {projectError}
+            </p>
+          )}
+
+          <div
+            style={{
+              display: 'flex',
+              gap: 10
+            }}
+          >
+            <button
+              type="submit"
+              disabled={savingProject}
+            >
+              {savingProject ? 'Saving...' : 'Save Changes'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCancelProjectEdit}
+              disabled={savingProject}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {error && (
+        <p style={{ color: 'red' }}>
+          {error}
+        </p>
+      )}
+
+      {/* Project Members */}
       <h3>Project Members</h3>
 
       {members.length === 0 ? (
@@ -193,6 +468,7 @@ export default function ProjectBoard() {
         </ul>
       )}
 
+      {/* Add Member */}
       <div
         style={{
           position: 'relative',
@@ -250,7 +526,9 @@ export default function ProjectBoard() {
                 }}
               >
                 <strong>{user.name}</strong>
+
                 <br />
+
                 <span
                   style={{
                     fontSize: 12,
@@ -267,7 +545,12 @@ export default function ProjectBoard() {
         {search.trim() &&
           searchResults.length === 0 &&
           !selectedUser && (
-            <p style={{ fontSize: 13, color: '#777' }}>
+            <p
+              style={{
+                fontSize: 13,
+                color: '#777'
+              }}
+            >
               No users found
             </p>
           )}
@@ -282,8 +565,15 @@ export default function ProjectBoard() {
             }}
           >
             <strong>{selectedUser.name}</strong>
+
             <br />
-            <span style={{ fontSize: 13, color: '#777' }}>
+
+            <span
+              style={{
+                fontSize: 13,
+                color: '#777'
+              }}
+            >
               {selectedUser.email}
             </span>
           </div>
@@ -303,17 +593,25 @@ export default function ProjectBoard() {
         </button>
 
         {memberMessage && (
-          <p style={{ color: 'green' }}>{memberMessage}</p>
+          <p style={{ color: 'green' }}>
+            {memberMessage}
+          </p>
         )}
 
         {memberError && (
-          <p style={{ color: 'red' }}>{memberError}</p>
+          <p style={{ color: 'red' }}>
+            {memberError}
+          </p>
         )}
       </div>
 
+      {/* New Task */}
       <h3>New Task</h3>
 
-      <form onSubmit={handleCreateTask} style={{ marginBottom: 20 }}>
+      <form
+        onSubmit={handleCreateTask}
+        style={{ marginBottom: 20 }}
+      >
         <input
           placeholder="New task title"
           value={title}
@@ -334,12 +632,31 @@ export default function ProjectBoard() {
           <option value="high">High</option>
         </select>
 
-        <button type="submit" style={{ marginLeft: 8 }}>
+        <input
+          type="date"
+          value={dueDate}
+          onChange={(e) => setDueDate(e.target.value)}
+          style={{
+            marginLeft: 8,
+            padding: 5
+          }}
+        />
+
+        <button
+          type="submit"
+          style={{ marginLeft: 8 }}
+        >
           Add Task
         </button>
       </form>
 
-      <div style={{ display: 'flex', gap: 20 }}>
+      {/* Task Board */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 20
+        }}
+      >
         {STATUSES.map((s) => (
           <div
             key={s.key}
@@ -362,10 +679,13 @@ export default function ProjectBoard() {
                     padding: 10,
                     marginBottom: 8,
                     borderRadius: 6,
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                    boxShadow:
+                      '0 1px 3px rgba(0,0,0,0.1)'
                   }}
                 >
-                  <Link to={`/task/${t.id}`}>{t.title}</Link>
+                  <Link to={`/task/${t.id}`}>
+                    {t.title}
+                  </Link>
 
                   <div
                     style={{
@@ -376,7 +696,8 @@ export default function ProjectBoard() {
                   >
                     👤{' '}
                     {members.find(
-                      (member) => member.userId === t.assigneeId
+                      (member) =>
+                        member.userId === t.assigneeId
                     )?.user?.name || 'Unassigned'}
                   </div>
 
@@ -386,17 +707,40 @@ export default function ProjectBoard() {
                       fontSize: 13
                     }}
                   >
-                    Priority: <strong>{t.priority || 'medium'}</strong>
+                    Priority:{' '}
+                    <strong>
+                      {t.priority || 'medium'}
+                    </strong>
                   </div>
+
+                  {t.dueDate && (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 13
+                      }}
+                    >
+                      📅 Due:{' '}
+                      <strong>
+                        {formatDueDate(t.dueDate)}
+                      </strong>
+                    </div>
+                  )}
 
                   <div style={{ marginTop: 6 }}>
                     {STATUSES
-                      .filter((st) => st.key !== t.status)
+                      .filter(
+                        (st) => st.key !== t.status
+                      )
                       .map((st) => (
                         <button
                           key={st.key}
+                          type="button"
                           onClick={() =>
-                            handleStatusChange(t.id, st.key)
+                            handleStatusChange(
+                              t.id,
+                              st.key
+                            )
                           }
                           style={{
                             fontSize: 11,

@@ -15,6 +15,7 @@ export default function TaskDetail() {
   const [description, setDescription] = useState('');
   const [editingDescription, setEditingDescription] = useState(false);
   const [priority, setPriority] = useState('medium');
+  const [dueDate, setDueDate] = useState('');
 
   const [error, setError] = useState('');
 
@@ -36,6 +37,12 @@ export default function TaskDetail() {
       setAssigneeId(taskRes.data.assigneeId || '');
       setDescription(taskRes.data.description || '');
       setPriority(taskRes.data.priority || 'medium');
+
+      if (taskRes.data.dueDate) {
+        setDueDate(taskRes.data.dueDate.slice(0, 10));
+      } else {
+        setDueDate('');
+      }
     } catch (err) {
       console.error('Failed to load task:', err);
       setError('Failed to load task');
@@ -95,6 +102,32 @@ export default function TaskDetail() {
       setError('Failed to update priority');
 
       setPriority(task.priority || 'medium');
+    }
+  };
+
+  const handleDueDateChange = async (e) => {
+    const newDueDate = e.target.value;
+
+    setDueDate(newDueDate);
+    setError('');
+
+    try {
+      const res = await api.patch(`/tasks/${id}`, {
+        dueDate: newDueDate
+          ? `${newDueDate}T12:00:00.000Z`
+          : null
+      });
+
+      setTask(res.data);
+    } catch (err) {
+      console.error('Failed to update due date:', err);
+      setError('Failed to update due date');
+
+      if (task.dueDate) {
+        setDueDate(task.dueDate.slice(0, 10));
+      } else {
+        setDueDate('');
+      }
     }
   };
 
@@ -158,6 +191,18 @@ export default function TaskDetail() {
     }
   };
 
+  const formatDueDate = (date) => {
+    if (!date) {
+      return null;
+    }
+
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   if (!task) {
     return (
       <div style={{ maxWidth: 700, margin: '40px auto' }}>
@@ -211,6 +256,13 @@ export default function TaskDetail() {
           <span>
             <strong>Assignee:</strong>{' '}
             {currentAssignee?.user?.name || 'Unassigned'}
+          </span>
+
+          <span>
+            <strong>Due:</strong>{' '}
+            {task.dueDate
+              ? formatDueDate(task.dueDate)
+              : 'No due date'}
           </span>
         </div>
       </div>
@@ -301,6 +353,46 @@ export default function TaskDetail() {
           <option value="medium">Medium</option>
           <option value="high">High</option>
         </select>
+      </div>
+
+      <div
+        style={{
+          margin: '20px 0',
+          padding: 15,
+          background: '#f4f4f4',
+          borderRadius: 8
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>Due Date</h3>
+
+        <input
+          type="date"
+          value={dueDate}
+          onChange={handleDueDateChange}
+          style={{
+            width: '100%',
+            padding: 10,
+            boxSizing: 'border-box'
+          }}
+        />
+
+        {task.dueDate && (
+          <p style={{ marginBottom: 0, fontSize: 13 }}>
+            Due on <strong>{formatDueDate(task.dueDate)}</strong>
+          </p>
+        )}
+
+        {!task.dueDate && (
+          <p
+            style={{
+              marginBottom: 0,
+              fontSize: 13,
+              color: '#777'
+            }}
+          >
+            No due date set.
+          </p>
+        )}
       </div>
 
       <div
