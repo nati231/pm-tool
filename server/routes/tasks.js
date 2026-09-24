@@ -5,6 +5,7 @@ require('temporal-polyfill/global');
 
 module.exports = function taskRoutes(db) {
   const router = express.Router();
+
   router.use(requireAuth);
 
   async function assertMember(projectId, userId) {
@@ -15,6 +16,22 @@ module.exports = function taskRoutes(db) {
     return !!membership;
   }
 
+  async function assertAssignee(projectId, userId) {
+    if (!userId) {
+      return true;
+    }
+
+    const membership = await db.orm.public.ProjectMember
+      .where({
+        projectId,
+        userId
+      })
+      .first();
+
+    return !!membership;
+  }
+
+  // Create task
   router.post('/', async (req, res) => {
     try {
       const {
@@ -33,11 +50,25 @@ module.exports = function taskRoutes(db) {
         });
       }
 
-      const isMember = await assertMember(projectId, req.userId);
+      const isMember = await assertMember(
+        projectId,
+        req.userId
+      );
 
       if (!isMember) {
         return res.status(403).json({
           error: 'Not a member of this project'
+        });
+      }
+
+      const validAssignee = await assertAssignee(
+        projectId,
+        assigneeId
+      );
+
+      if (!validAssignee) {
+        return res.status(400).json({
+          error: 'Assignee must be a member of this project'
         });
       }
 
@@ -53,7 +84,9 @@ module.exports = function taskRoutes(db) {
           : null
       });
 
-      req.app.locals.io.to(projectId).emit('task:created', task);
+      req.app.locals.io
+        .to(projectId)
+        .emit('task:created', task);
 
       res.status(201).json(task);
     } catch (err) {
@@ -65,6 +98,7 @@ module.exports = function taskRoutes(db) {
     }
   });
 
+  // List project tasks
   router.get('/project/:projectId', async (req, res) => {
     try {
       const isMember = await assertMember(
@@ -79,7 +113,9 @@ module.exports = function taskRoutes(db) {
       }
 
       const tasks = await db.orm.public.Task
-        .where({ projectId: req.params.projectId })
+        .where({
+          projectId: req.params.projectId
+        })
         .all();
 
       res.json(tasks);
@@ -92,7 +128,7 @@ module.exports = function taskRoutes(db) {
     }
   });
 
-  // GET a single task
+  // Get single task
   router.get('/:id', async (req, res) => {
     try {
       const task = await db.orm.public.Task
@@ -118,12 +154,15 @@ module.exports = function taskRoutes(db) {
 
       res.json(task);
     } catch (err) {
+      console.error('Get task error:', err);
+
       res.status(500).json({
         error: err.message
       });
     }
   });
 
+  // Update task
   router.patch('/:id', async (req, res) => {
     try {
       const task = await db.orm.public.Task
@@ -156,14 +195,40 @@ module.exports = function taskRoutes(db) {
         dueDate
       } = req.body;
 
+      if (assigneeId !== undefined) {
+        const validAssignee = await assertAssignee(
+          task.projectId,
+          assigneeId
+        );
+
+        if (!validAssignee) {
+          return res.status(400).json({
+            error: 'Assignee must be a member of this project'
+          });
+        }
+      }
+
       const updated = await db.orm.public.Task
         .where({ id: req.params.id })
         .update({
           ...(title !== undefined && { title }),
-          ...(description !== undefined && { description }),
-          ...(status !== undefined && { status }),
-          ...(assigneeId !== undefined && { assigneeId }),
-          ...(priority !== undefined && { priority }),
+
+          ...(description !== undefined && {
+            description
+          }),
+
+          ...(status !== undefined && {
+            status
+          }),
+
+          ...(assigneeId !== undefined && {
+            assigneeId: assigneeId || null
+          }),
+
+          ...(priority !== undefined && {
+            priority
+          }),
+
           ...(dueDate !== undefined && {
             dueDate: dueDate
               ? Temporal.Instant.from(dueDate)
@@ -185,6 +250,7 @@ module.exports = function taskRoutes(db) {
     }
   });
 
+  // Delete task
   router.delete('/:id', async (req, res) => {
     try {
       const task = await db.orm.public.Task
@@ -209,12 +275,23 @@ module.exports = function taskRoutes(db) {
       }
 
       await db.orm.public.Comment
-        .where({ taskId: req.params.id })
+        .where({
+          taskId: req.params.id
+        })
         .delete();
 
       await db.orm.public.Task
-        .where({ id: req.params.id })
+        .where({
+          id: req.params.id
+        })
         .delete();
+
+      req.app.locals.io
+        .to(task.projectId)
+        .emit('task:deleted', {
+          id: task.id,
+          projectId: task.projectId
+        });
 
       res.status(204).send();
     } catch (err) {

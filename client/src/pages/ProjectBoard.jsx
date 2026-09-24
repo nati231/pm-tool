@@ -16,9 +16,11 @@ export default function ProjectBoard() {
   const [tasks, setTasks] = useState([]);
   const [members, setMembers] = useState([]);
 
+  // New task
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
   const [error, setError] = useState('');
 
   // Project editing
@@ -55,6 +57,7 @@ export default function ProjectBoard() {
       setProjectDescription(projRes.data.description || '');
     } catch (err) {
       console.error('Failed to load project:', err);
+
       setError(
         err.response?.data?.error || 'Failed to load project'
       );
@@ -68,25 +71,67 @@ export default function ProjectBoard() {
 
     const handleTaskCreated = (newTask) => {
       if (newTask.projectId === id) {
-        setTasks((prev) => [...prev, newTask]);
+        setTasks((prev) => {
+          const alreadyExists = prev.some(
+            (task) => task.id === newTask.id
+          );
+
+          if (alreadyExists) {
+            return prev;
+          }
+
+          return [...prev, newTask];
+        });
       }
     };
 
     const handleTaskUpdated = (updatedTask) => {
+      if (updatedTask.projectId !== id) {
+        return;
+      }
+
       setTasks((prev) =>
-        prev.map((t) =>
-          t.id === updatedTask.id ? updatedTask : t
+        prev.map((task) =>
+          task.id === updatedTask.id
+            ? updatedTask
+            : task
+        )
+      );
+    };
+
+    const handleTaskDeleted = (deletedTask) => {
+      if (deletedTask.projectId !== id) {
+        return;
+      }
+
+      setTasks((prev) =>
+        prev.filter(
+          (task) => task.id !== deletedTask.id
         )
       );
     };
 
     socket.on('task:created', handleTaskCreated);
     socket.on('task:updated', handleTaskUpdated);
+    socket.on('task:deleted', handleTaskDeleted);
 
     return () => {
       socket.emit('leaveProject', id);
-      socket.off('task:created', handleTaskCreated);
-      socket.off('task:updated', handleTaskUpdated);
+
+      socket.off(
+        'task:created',
+        handleTaskCreated
+      );
+
+      socket.off(
+        'task:updated',
+        handleTaskUpdated
+      );
+
+      socket.off(
+        'task:deleted',
+        handleTaskDeleted
+      );
     };
   }, [id]);
 
@@ -114,31 +159,71 @@ export default function ProjectBoard() {
     return () => clearTimeout(timeout);
   }, [search]);
 
+  const getMemberName = (member) => {
+    return (
+      member.user?.name ||
+      member.user?.email ||
+      'Unknown user'
+    );
+  };
+
+  const getMemberEmail = (member) => {
+    return member.user?.email || '';
+  };
+
+  const getTaskAssignee = (task) => {
+    return members.find(
+      (member) => member.userId === task.assigneeId
+    );
+  };
+
+  const getTaskAssigneeName = (task) => {
+    const assignee = getTaskAssignee(task);
+
+    if (!assignee) {
+      return 'Unassigned';
+    }
+
+    return getMemberName(assignee);
+  };
+
   const handleCreateTask = async (e) => {
     e.preventDefault();
     setError('');
 
+    if (!title.trim()) {
+      setError('Task title is required');
+      return;
+    }
+
     try {
       await api.post('/tasks', {
-        title,
+        title: title.trim(),
         projectId: id,
         status: 'todo',
         priority,
-        dueDate: dueDate || null
+        dueDate: dueDate || null,
+        assigneeId: assigneeId || null
       });
 
       setTitle('');
       setPriority('medium');
       setDueDate('');
+      setAssigneeId('');
     } catch (err) {
       console.error('Failed to create task:', err);
+
       setError(
-        err.response?.data?.error || 'Failed to create task'
+        err.response?.data?.error ||
+          'Failed to create task'
       );
     }
   };
 
-  const handleStatusChange = async (taskId, newStatus) => {
+  const handleStatusChange = async (
+    taskId,
+    newStatus
+  ) => {
     setError('');
 
     try {
@@ -147,9 +232,36 @@ export default function ProjectBoard() {
       });
     } catch (err) {
       console.error('Failed to update task:', err);
+
       setError(
-        err.response?.data?.error || 'Failed to update task'
+        err.response?.data?.error ||
+          'Failed to update task'
       );
+    }
+  };
+
+  const handleAssigneeChange = async (
+    taskId,
+    newAssigneeId
+  ) => {
+    setError('');
+
+    try {
+      await api.patch(`/tasks/${taskId}`, {
+        assigneeId: newAssigneeId || null
+      });
+    } catch (err) {
+      console.error(
+        'Failed to update task assignee:',
+        err
+      );
+
+      setError(
+        err.response?.data?.error ||
+          'Failed to update task assignee'
+      );
+
+      await fetchData();
     }
   };
 
@@ -184,11 +296,15 @@ export default function ProjectBoard() {
       setSearch('');
       setSelectedUser(null);
 
-      const res = await api.get(`/members/project/${id}`);
+      const res = await api.get(
+        `/members/project/${id}`
+      );
+
       setMembers(res.data);
     } catch (err) {
       setMemberError(
-        err.response?.data?.error || 'Failed to add member'
+        err.response?.data?.error ||
+          'Failed to add member'
       );
     }
   };
@@ -198,7 +314,10 @@ export default function ProjectBoard() {
     e.preventDefault();
 
     if (!projectName.trim()) {
-      setProjectError('Project name cannot be empty');
+      setProjectError(
+        'Project name cannot be empty'
+      );
+
       return;
     }
 
@@ -206,20 +325,30 @@ export default function ProjectBoard() {
     setSavingProject(true);
 
     try {
-      const res = await api.patch(`/projects/${id}`, {
-        name: projectName.trim(),
-        description: projectDescription.trim() || null
-      });
+      const res = await api.patch(
+        `/projects/${id}`,
+        {
+          name: projectName.trim(),
+          description:
+            projectDescription.trim() || null
+        }
+      );
 
       setProject(res.data);
       setProjectName(res.data.name || '');
-      setProjectDescription(res.data.description || '');
+      setProjectDescription(
+        res.data.description || ''
+      );
       setEditingProject(false);
     } catch (err) {
-      console.error('Failed to update project:', err);
+      console.error(
+        'Failed to update project:',
+        err
+      );
 
       setProjectError(
-        err.response?.data?.error || 'Failed to update project'
+        err.response?.data?.error ||
+          'Failed to update project'
       );
     } finally {
       setSavingProject(false);
@@ -228,7 +357,9 @@ export default function ProjectBoard() {
 
   const handleCancelProjectEdit = () => {
     setProjectName(project?.name || '');
-    setProjectDescription(project?.description || '');
+    setProjectDescription(
+      project?.description || ''
+    );
     setProjectError('');
     setEditingProject(false);
   };
@@ -252,10 +383,14 @@ export default function ProjectBoard() {
       // Return to dashboard after successful deletion
       window.location.href = '/dashboard';
     } catch (err) {
-      console.error('Failed to delete project:', err);
+      console.error(
+        'Failed to delete project:',
+        err
+      );
 
       setError(
-        err.response?.data?.error || 'Failed to delete project'
+        err.response?.data?.error ||
+          'Failed to delete project'
       );
 
       setDeletingProject(false);
@@ -267,18 +402,28 @@ export default function ProjectBoard() {
       return null;
     }
 
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
+    return new Date(date).toLocaleDateString(
+      'en-US',
+      {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      }
+    );
   };
 
   if (!project) {
     return (
-      <div style={{ maxWidth: 1000, margin: '40px auto' }}>
+      <div
+        style={{
+          maxWidth: 1000,
+          margin: '40px auto'
+        }}
+      >
         {error ? (
-          <p style={{ color: 'red' }}>{error}</p>
+          <p style={{ color: 'red' }}>
+            {error}
+          </p>
         ) : (
           <p>Loading...</p>
         )}
@@ -287,7 +432,12 @@ export default function ProjectBoard() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '40px auto' }}>
+    <div
+      style={{
+        maxWidth: 1000,
+        margin: '40px auto'
+      }}
+    >
       <Link to="/dashboard">
         ← Back to Dashboard
       </Link>
@@ -309,7 +459,12 @@ export default function ProjectBoard() {
           </h2>
 
           {project.description && (
-            <p style={{ marginTop: 0, color: '#666' }}>
+            <p
+              style={{
+                marginTop: 0,
+                color: '#666'
+              }}
+            >
               {project.description}
             </p>
           )}
@@ -326,8 +481,14 @@ export default function ProjectBoard() {
             <button
               type="button"
               onClick={() => {
-                setProjectName(project.name || '');
-                setProjectDescription(project.description || '');
+                setProjectName(
+                  project.name || ''
+                );
+
+                setProjectDescription(
+                  project.description || ''
+                );
+
                 setProjectError('');
                 setEditingProject(true);
               }}
@@ -379,7 +540,9 @@ export default function ProjectBoard() {
             <input
               type="text"
               value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
+              onChange={(e) =>
+                setProjectName(e.target.value)
+              }
               required
               style={{
                 width: '100%',
@@ -403,7 +566,9 @@ export default function ProjectBoard() {
             <textarea
               value={projectDescription}
               onChange={(e) =>
-                setProjectDescription(e.target.value)
+                setProjectDescription(
+                  e.target.value
+                )
               }
               rows={4}
               placeholder="Project description (optional)"
@@ -432,12 +597,16 @@ export default function ProjectBoard() {
               type="submit"
               disabled={savingProject}
             >
-              {savingProject ? 'Saving...' : 'Save Changes'}
+              {savingProject
+                ? 'Saving...'
+                : 'Save Changes'}
             </button>
 
             <button
               type="button"
-              onClick={handleCancelProjectEdit}
+              onClick={
+                handleCancelProjectEdit
+              }
               disabled={savingProject}
             >
               Cancel
@@ -461,8 +630,11 @@ export default function ProjectBoard() {
         <ul>
           {members.map((member) => (
             <li key={member.id}>
-              <strong>{member.user?.name}</strong>{' '}
-              ({member.user?.email}) — {member.role}
+              <strong>
+                {getMemberName(member)}
+              </strong>{' '}
+              ({getMemberEmail(member)}) —{' '}
+              {member.role}
             </li>
           ))}
         </ul>
@@ -495,52 +667,59 @@ export default function ProjectBoard() {
           }}
         />
 
-        {search.trim() && searchResults.length > 0 && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 75,
-              left: 0,
-              right: 0,
-              background: 'white',
-              border: '1px solid #ddd',
-              borderRadius: 6,
-              boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
-              zIndex: 10
-            }}
-          >
-            {searchResults.map((user) => (
-              <button
-                key={user.id}
-                type="button"
-                onClick={() => handleSelectUser(user)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: 10,
-                  border: 'none',
-                  borderBottom: '1px solid #eee',
-                  background: 'white',
-                  cursor: 'pointer'
-                }}
-              >
-                <strong>{user.name}</strong>
-
-                <br />
-
-                <span
+        {search.trim() &&
+          searchResults.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 75,
+                left: 0,
+                right: 0,
+                background: 'white',
+                border: '1px solid #ddd',
+                borderRadius: 6,
+                boxShadow:
+                  '0 4px 10px rgba(0,0,0,0.1)',
+                zIndex: 10
+              }}
+            >
+              {searchResults.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  onClick={() =>
+                    handleSelectUser(user)
+                  }
                   style={{
-                    fontSize: 12,
-                    color: '#777'
+                    display: 'block',
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: 10,
+                    border: 'none',
+                    borderBottom:
+                      '1px solid #eee',
+                    background: 'white',
+                    cursor: 'pointer'
                   }}
                 >
-                  {user.email}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+                  <strong>
+                    {user.name}
+                  </strong>
+
+                  <br />
+
+                  <span
+                    style={{
+                      fontSize: 12,
+                      color: '#777'
+                    }}
+                  >
+                    {user.email}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
         {search.trim() &&
           searchResults.length === 0 &&
@@ -564,7 +743,9 @@ export default function ProjectBoard() {
               borderRadius: 6
             }}
           >
-            <strong>{selectedUser.name}</strong>
+            <strong>
+              {selectedUser.name}
+            </strong>
 
             <br />
 
@@ -586,7 +767,9 @@ export default function ProjectBoard() {
           style={{
             marginTop: 10,
             padding: '9px 15px',
-            cursor: selectedUser ? 'pointer' : 'not-allowed'
+            cursor: selectedUser
+              ? 'pointer'
+              : 'not-allowed'
           }}
         >
           Add Member
@@ -610,44 +793,150 @@ export default function ProjectBoard() {
 
       <form
         onSubmit={handleCreateTask}
-        style={{ marginBottom: 20 }}
+        style={{
+          marginBottom: 20,
+          border: '1px solid #ddd',
+          padding: 15,
+          borderRadius: 8
+        }}
       >
-        <input
-          placeholder="New task title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-
-        <select
-          value={priority}
-          onChange={(e) => setPriority(e.target.value)}
+        <div
           style={{
-            marginLeft: 8,
-            padding: 5
+            display: 'grid',
+            gap: 10
           }}
         >
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-        </select>
+          <div>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: 5,
+                fontWeight: 'bold'
+              }}
+            >
+              Task Title
+            </label>
 
-        <input
-          type="date"
-          value={dueDate}
-          onChange={(e) => setDueDate(e.target.value)}
-          style={{
-            marginLeft: 8,
-            padding: 5
-          }}
-        />
+            <input
+              placeholder="New task title"
+              value={title}
+              onChange={(e) =>
+                setTitle(e.target.value)
+              }
+              required
+              style={{
+                width: '100%',
+                padding: 8,
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
 
-        <button
-          type="submit"
-          style={{ marginLeft: 8 }}
-        >
-          Add Task
-        </button>
+          <div>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: 5,
+                fontWeight: 'bold'
+              }}
+            >
+              Priority
+            </label>
+
+            <select
+              value={priority}
+              onChange={(e) =>
+                setPriority(e.target.value)
+              }
+              style={{
+                width: '100%',
+                padding: 8
+              }}
+            >
+              <option value="low">
+                Low
+              </option>
+
+              <option value="medium">
+                Medium
+              </option>
+
+              <option value="high">
+                High
+              </option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: 5,
+                fontWeight: 'bold'
+              }}
+            >
+              Assignee
+            </label>
+
+            <select
+              value={assigneeId}
+              onChange={(e) =>
+                setAssigneeId(e.target.value)
+              }
+              style={{
+                width: '100%',
+                padding: 8
+              }}
+            >
+              <option value="">
+                Unassigned
+              </option>
+
+              {members.map((member) => (
+                <option
+                  key={member.userId}
+                  value={member.userId}
+                >
+                  {getMemberName(member)}
+                  {member.role === 'owner'
+                    ? ' (Owner)'
+                    : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: 5,
+                fontWeight: 'bold'
+              }}
+            >
+              Due Date
+            </label>
+
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) =>
+                setDueDate(e.target.value)
+              }
+              style={{
+                width: '100%',
+                padding: 8,
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+
+          <div>
+            <button type="submit">
+              Add Task
+            </button>
+          </div>
+        </div>
       </form>
 
       {/* Task Board */}
@@ -657,9 +946,9 @@ export default function ProjectBoard() {
           gap: 20
         }}
       >
-        {STATUSES.map((s) => (
+        {STATUSES.map((status) => (
           <div
-            key={s.key}
+            key={status.key}
             style={{
               flex: 1,
               background: '#f4f4f4',
@@ -667,13 +956,16 @@ export default function ProjectBoard() {
               borderRadius: 8
             }}
           >
-            <h4>{s.label}</h4>
+            <h4>{status.label}</h4>
 
             {tasks
-              .filter((t) => t.status === s.key)
-              .map((t) => (
+              .filter(
+                (task) =>
+                  task.status === status.key
+              )
+              .map((task) => (
                 <div
-                  key={t.id}
+                  key={task.id}
                   style={{
                     background: 'white',
                     padding: 10,
@@ -683,10 +975,61 @@ export default function ProjectBoard() {
                       '0 1px 3px rgba(0,0,0,0.1)'
                   }}
                 >
-                  <Link to={`/task/${t.id}`}>
-                    {t.title}
+                  <Link
+                    to={`/task/${task.id}`}
+                  >
+                    {task.title}
                   </Link>
 
+                  {/* Assignee */}
+                  <div
+                    style={{
+                      marginTop: 8
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: 12,
+                        color: '#666',
+                        marginBottom: 4
+                      }}
+                    >
+                      Assignee
+                    </label>
+
+                    <select
+                      value={
+                        task.assigneeId || ''
+                      }
+                      onChange={(e) =>
+                        handleAssigneeChange(
+                          task.id,
+                          e.target.value
+                        )
+                      }
+                      style={{
+                        width: '100%',
+                        padding: 5,
+                        fontSize: 12
+                      }}
+                    >
+                      <option value="">
+                        Unassigned
+                      </option>
+
+                      {members.map((member) => (
+                        <option
+                          key={member.userId}
+                          value={member.userId}
+                        >
+                          {getMemberName(member)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Priority */}
                   <div
                     style={{
                       marginTop: 6,
@@ -694,26 +1037,15 @@ export default function ProjectBoard() {
                       color: '#666'
                     }}
                   >
-                    👤{' '}
-                    {members.find(
-                      (member) =>
-                        member.userId === t.assigneeId
-                    )?.user?.name || 'Unassigned'}
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 13
-                    }}
-                  >
                     Priority:{' '}
                     <strong>
-                      {t.priority || 'medium'}
+                      {task.priority ||
+                        'medium'}
                     </strong>
                   </div>
 
-                  {t.dueDate && (
+                  {/* Due Date */}
+                  {task.dueDate && (
                     <div
                       style={{
                         marginTop: 4,
@@ -722,37 +1054,59 @@ export default function ProjectBoard() {
                     >
                       📅 Due:{' '}
                       <strong>
-                        {formatDueDate(t.dueDate)}
+                        {formatDueDate(
+                          task.dueDate
+                        )}
                       </strong>
                     </div>
                   )}
 
-                  <div style={{ marginTop: 6 }}>
-                    {STATUSES
-                      .filter(
-                        (st) => st.key !== t.status
-                      )
-                      .map((st) => (
-                        <button
-                          key={st.key}
-                          type="button"
-                          onClick={() =>
-                            handleStatusChange(
-                              t.id,
-                              st.key
-                            )
-                          }
-                          style={{
-                            fontSize: 11,
-                            marginRight: 4
-                          }}
-                        >
-                          → {st.label}
-                        </button>
-                      ))}
+                  {/* Status Buttons */}
+                  <div
+                    style={{
+                      marginTop: 8
+                    }}
+                  >
+                    {STATUSES.filter(
+                      (nextStatus) =>
+                        nextStatus.key !==
+                        task.status
+                    ).map((nextStatus) => (
+                      <button
+                        key={nextStatus.key}
+                        type="button"
+                        onClick={() =>
+                          handleStatusChange(
+                            task.id,
+                            nextStatus.key
+                          )
+                        }
+                        style={{
+                          fontSize: 11,
+                          marginRight: 4,
+                          marginBottom: 4
+                        }}
+                      >
+                        → {nextStatus.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ))}
+
+            {tasks.filter(
+              (task) =>
+                task.status === status.key
+            ).length === 0 && (
+              <p
+                style={{
+                  color: '#888',
+                  fontSize: 13
+                }}
+              >
+                No tasks
+              </p>
+            )}
           </div>
         ))}
       </div>
